@@ -5,6 +5,9 @@
   "bin": {
     "pp": "src/pp"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "install": "sh ./src/install.sh",
     "uninstall": "sh ./src/uninstall.sh",

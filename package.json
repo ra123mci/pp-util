@@ -1,0 +1,14 @@
+{
+  "name": "pp-util",
+  "version": "1.0.0",
+  "bin": {
+    "pp": "./pp"
+  },
+  "preferGlobal": true,
+  "license": "MIT",
+  "description": "pp - Port Process Utility",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ra123mci/pp-util.git"
+  }
+}

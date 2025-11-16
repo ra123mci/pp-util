@@ -1,14 +1,37 @@
 {
-  "name": "pp-util",
+  "name": "@mcisme/pp-util",
   "version": "1.0.0",
+  "main": "pp",
   "bin": {
-    "pp": "./pp"
+    "pp": "src/pp"
+  },
+  "scripts": {
+    "install": "sh ./src/install.sh",
+    "uninstall": "sh ./src/uninstall.sh",
+    "lint": "eslint src --ext .js,.sh,.ps1"
   },
   "preferGlobal": true,
   "license": "MIT",
-  "description": "pp - Port Process Utility",
+  "description": "pp - Port Process Utility: list, inspect, and kill processes on specific ports for Linux/macOS and Windows PowerShell.",
+  "keywords": [
+    "pp",
+    "port",
+    "process",
+    "utility",
+    "bash",
+    "powershell",
+    "cli"
+  ],
+  "author": "Christopher Mangala Manika [mcithewezzy@live.com](mailto:mcithewezzy@live.com)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ra123mci/pp-util.git"
+    "url": "[https://github.com/ra123mci/pp-util.git](https://github.com/ra123mci/pp-util.git)"
+  },
+  "bugs": {
+    "url": "[https://github.com/ra123mci/pp-util/issues](https://github.com/ra123mci/pp-util/issues)"
+  },
+  "homepage": "[https://github.com/ra123mci/pp-util#readme](https://github.com/ra123mci/pp-util#readme)",
+  "engines": {
+    "node": ">=14.0.0"
   }
 }

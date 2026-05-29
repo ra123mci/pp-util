@@ -1,23 +1,25 @@
 #!/usr/bin/env bash
 # pp - Port Process Utility
-# Version 1.0.0
+# Version 1.1.0
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 print_help() {
   cat <<'EOF'
 pp - Port Process Utility
 
 Usage:
-  pp <port>                 : show basic info for the port
-  pp -i|--info <port>       : show detailed process info
-  pp -k|--kill <port>       : kill process using the port
-  pp -h|--help              : show this help
-  pp -v|--version           : show version
+  pp <port>                     : show basic info for the port
+  pp -i|--info <port>           : show detailed process info
+  pp -i|--info -f|--follow <port> : detailed info + follow logs
+  pp -k|--kill <port>           : kill process using the port
+  pp -h|--help                  : show this help
+  pp -v|--version               : show version
 
 Examples:
   pp 3000
   pp -i 3000
+  pp -i --follow 3000
   pp -k 3000
 EOF
 }
@@ -29,12 +31,14 @@ fi
 
 ACTION=""
 PORT=""
+FOLLOW=false
 
 # parse args (simple)
 while [ $# -gt 0 ]; do
   case "$1" in
     -i|--info) ACTION="info"; shift ;;
     -k|--kill) ACTION="kill"; shift ;;
+    -f|--follow) FOLLOW=true; shift ;;
     -h|--help) print_help; exit 0 ;;
     -v|--version) echo "pp version $VERSION"; exit 0 ;;
     --) shift; break ;;
@@ -75,22 +79,124 @@ fi
 case "$ACTION" in
   info)
     echo "ℹ️  Detailed info for port $PORT (PIDs: $PID):"
-    if command -v lsof >/dev/null 2>&1; then
-      lsof -i :"$PORT"
-    fi
+    echo ""
+    
     for p in $PID; do
-      if command -v ps >/dev/null 2>&1; then
+      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      echo "PID: $p"
+      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
       
-        ps -fp "$p"
+      # Basic process info
+      if command -v ps >/dev/null 2>&1; then
+        echo ""
+        echo "📋 Process Info:"
+        ps -o pid=,user=,comm=,args= -p "$p" 2>/dev/null || echo "  N/A"
       fi
+      
+      # Working directory
+      if [ -L "/proc/$p/cwd" ]; then
+        echo ""
+        echo "📁 Working Directory:"
+        readlink "/proc/$p/cwd" 2>/dev/null || echo "  N/A"
+      fi
+      
+      # Full command line
+      if [ -f "/proc/$p/cmdline" ]; then
+        echo ""
+        echo "🔧 Command Line:"
+        cat "/proc/$p/cmdline" 2>/dev/null | tr '\0' ' ' && echo "" || echo "  N/A"
+      fi
+      
+      # Memory & CPU usage
+      if command -v ps >/dev/null 2>&1; then
+        echo ""
+        echo "💾 Resource Usage:"
+        ps -o %cpu=,%mem=,rss= -p "$p" 2>/dev/null | awk '{print "  CPU: " $1 "% | Memory: " $2 "% (" $3 " KB)"}' || echo "  N/A"
+      fi
+      
+      # File descriptors (open files)
+      if [ -d "/proc/$p/fd" ]; then
+        echo ""
+        echo "📂 Open Files:"
+        echo "  Total: $(ls /proc/$p/fd 2>/dev/null | wc -l)"
+        if command -v lsof >/dev/null 2>&1; then
+          lsof -p "$p" 2>/dev/null | head -10
+        fi
+      fi
+      
+      echo ""
     done
+    
+    # Network binding
+    if command -v lsof >/dev/null 2>&1; then
+      echo ""
+      echo "🌐 Network Binding:"
+      lsof -i :"$PORT" 2>/dev/null || echo "  N/A"
+    fi
+    
+    # Follow logs if requested
+    if [ "$FOLLOW" = true ]; then
+      echo ""
+      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      echo "📜 Following process logs (Ctrl+C to stop)..."
+      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      echo ""
+      
+      # Try to find and tail application logs
+      found_logs=false
+      
+      for p in $PID; do
+        # Get process directory
+        proc_dir=$(readlink "/proc/$p/cwd" 2>/dev/null)
+        
+        if [ -n "$proc_dir" ]; then
+          # Look for common log files
+          if [ -f "$proc_dir/app.log" ]; then
+            echo "📄 Following: $proc_dir/app.log"
+            tail -f "$proc_dir/app.log"
+            found_logs=true
+          elif [ -f "$proc_dir/error.log" ]; then
+            echo "📄 Following: $proc_dir/error.log"
+            tail -f "$proc_dir/error.log"
+            found_logs=true
+          elif [ -d "$proc_dir/logs" ]; then
+            latest_log=$(find "$proc_dir/logs" -name "*.log" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+            if [ -n "$latest_log" ]; then
+              echo "📄 Following: $latest_log"
+              tail -f "$latest_log"
+              found_logs=true
+            fi
+          fi
+        fi
+        
+        # Fallback: try to tail stdout/stderr if available
+        if [ "$found_logs" = false ] && [ -e "/proc/$p/fd/1" ]; then
+          echo "📄 Following stdout (PID: $p)"
+          tail -f "/proc/$p/fd/1" 2>/dev/null &
+          TAIL_PID=$!
+          trap "kill $TAIL_PID 2>/dev/null" EXIT
+          wait
+        fi
+      done
+      
+      if [ "$found_logs" = false ]; then
+        echo "⚠️  No standard log files found for processes on port $PORT"
+        echo ""
+        echo "Suggestions:"
+        echo "  - Check the application working directory"
+        echo "  - Review /var/log for system logs"
+        echo "  - Use: sudo journalctl -u <service> -f (if running as service)"
+      fi
+    fi
     ;;
+    
   kill)
     echo "🛑 Killing process(es) on port $PORT (PIDs: $PID)..."
     for p in $PID; do
       kill -9 "$p" 2>/dev/null && echo "✔️  Killed $p" || echo "⚠️  Failed to kill $p"
     done
     ;;
+    
   *)
     echo "🔍 Process(es) using port $PORT: PIDs=$PID"
     if command -v lsof >/dev/null 2>&1; then

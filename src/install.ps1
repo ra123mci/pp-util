@@ -7,13 +7,13 @@ param(
     [string]$InstallDir = "$HOME\bin"
 )
 
-# Crée le dossier si nécessaire
+# Create the install directory if needed
 if (-not (Test-Path $InstallDir)) {
-    Write-Output "📂 Creating install directory: $InstallDir"
+    Write-Output "[+] Creating install directory: $InstallDir"
     New-Item -ItemType Directory -Path $InstallDir | Out-Null
 }
 
-# Copie pp.ps1
+# Copy pp.ps1
 $Source = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Definition) "pp.ps1"
 $Target = Join-Path $InstallDir "pp.ps1"
 
@@ -23,21 +23,30 @@ if (-not (Test-Path $Source)) {
 }
 
 Copy-Item -Path $Source -Destination $Target -Force
-Write-Output "✔️  pp.ps1 copied to $Target"
+Write-Output "[OK] pp.ps1 copied to $Target"
 
-# Ajoute le dossier au PATH si nécessaire
-if (-not ($env:Path -split ";" | Where-Object { $_ -eq $InstallDir })) {
-    [Environment]::SetEnvironmentVariable("Path", "$env:Path;$InstallDir", [EnvironmentVariableTarget]::User)
-    Write-Output "🔗 Added $InstallDir to PATH. Restart PowerShell to apply."
+# Add directory to PATH if needed
+$currentPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
+if ($currentPath -notlike "*$InstallDir*") {
+    [Environment]::SetEnvironmentVariable("Path", "$currentPath;$InstallDir", [EnvironmentVariableTarget]::User)
+    Write-Output "[+] Added $InstallDir to PATH. Restart PowerShell to apply."
 }
 
-# Crée un alias permanent
-$Profile = $PROFILE
-if (-not (Test-Path $Profile)) { New-Item -ItemType File -Path $Profile -Force | Out-Null }
-$aliasCmd = "Set-Alias pp `"$Target`""
-if (-not (Select-String -Path $Profile -Pattern "Set-Alias pp")) {
-    Add-Content -Path $Profile -Value $aliasCmd
-    Write-Output "🔹 Alias 'pp' created. Restart PowerShell to use 'pp'."
+# Create permanent alias
+$ProfileDir = Split-Path $PROFILE
+if (-not (Test-Path $ProfileDir)) {
+    New-Item -ItemType Directory -Path $ProfileDir -Force | Out-Null
 }
 
-Write-Output "✅ Installation complete."
+if (-not (Test-Path $PROFILE)) {
+    New-Item -ItemType File -Path $PROFILE -Force | Out-Null
+}
+
+$aliasCmd = "Set-Alias pp `"$Target`" -Force"
+$profileContent = Get-Content -Path $PROFILE -Raw -ErrorAction SilentlyContinue
+if ($profileContent -notlike "*Set-Alias pp*") {
+    Add-Content -Path $PROFILE -Value "`n$aliasCmd"
+    Write-Output "[+] Alias 'pp' created. Restart PowerShell to use 'pp'."
+}
+
+Write-Output "[DONE] Installation complete."

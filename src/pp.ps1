@@ -29,21 +29,21 @@ $VERSION = "1.1.0"
 
 function Show-Help {
     @"
-pp.ps1 - Port Process Utility
+pp - Port Process Utility
 
 Usage:
-  pp.ps1 <port>                : show basic info for the port
-  pp.ps1 -i <port>             : detailed process info
-  pp.ps1 -i -f <port>          : detailed info + follow logs
-  pp.ps1 -k <port>             : kill process using this port
-  pp.ps1 -h                     : show help
-  pp.ps1 -v                     : version
+  pp <port>                : show basic info for the port
+  pp -i <port>             : detailed process info
+  pp -i -f <port>          : detailed info + follow logs
+  pp -k <port>             : kill process using this port
+  pp -h                     : show help
+  pp -v                     : version
 
 Examples:
-  pp.ps1 3000
-  pp.ps1 -i 5173
-  pp.ps1 -i -f 8000
-  pp.ps1 -k 3000
+  pp 3000
+  pp -i 5173
+  pp -i -f 8000
+  pp -k 3000
 "@
 }
 
@@ -57,52 +57,52 @@ if (-not $Port) {
     exit 1
 }
 
-# ---------------------------------------------
 # Find processes listening on the specified port
-# ---------------------------------------------
-
 $connections = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
     Where-Object { $_.LocalPort -eq [int]$Port }
 
 if (-not $connections) {
-    Write-Output "⚠️  No process found on port $Port"
+    Write-Output "[WARNING] No process found on port $Port"
     exit 0
 }
 
 $PIDs = $connections.OwningProcess | Sort-Object -Unique
 
 if (-not $PIDs -or $PIDs.Count -eq 0) {
-    Write-Output "⚠️  No process found on port $Port"
+    Write-Output "[WARNING] No process found on port $Port"
     exit 0
 }
 
-# ---------------------------------------------
-# ACTION
-# ---------------------------------------------
+# --- ACTION ---
 
 if ($Info) {
-    Write-Output "ℹ️  Detailed info for port $Port (PIDs: $($PIDs -join ', '))"
+    Write-Output "[INFO] Detailed info for port $Port (PIDs: $($PIDs -join ', '))"
 
     foreach ($pid in $PIDs) {
-        Write-Output "`n$(('━' * 50))"
+        Write-Output ""
+        Write-Output "=================================================="
         Write-Output "PID: $pid"
-        Write-Output "$(('━' * 50))"
+        Write-Output "=================================================="
         
         try {
             $proc = Get-Process -Id $pid -ErrorAction Stop
             
-            Write-Output "`n📋 Process Info:"
+            Write-Output ""
+            Write-Output "[PROCESS INFO]"
             Write-Output "  Name: $($proc.Name)"
             Write-Output "  User: $(((Get-Process -Id $pid -IncludeUserName -ErrorAction SilentlyContinue).UserName) -join ', ')"
             Write-Output "  Handle Count: $($proc.HandleCount)"
             
-            Write-Output "`n📁 Working Directory:"
+            Write-Output ""
+            Write-Output "[WORKING DIRECTORY]"
             Write-Output "  $($proc.Path -replace '\\[^\\]*$', '')"
             
-            Write-Output "`n🔧 Full Path:"
+            Write-Output ""
+            Write-Output "[FULL PATH]"
             Write-Output "  $($proc.Path)"
             
-            Write-Output "`n🔧 Command Line:"
+            Write-Output ""
+            Write-Output "[COMMAND LINE]"
             try {
                 $cmdLine = (Get-CimInstance Win32_Process -Filter "ProcessId = $pid" -ErrorAction SilentlyContinue).CommandLine
                 if ($cmdLine) {
@@ -114,30 +114,35 @@ if ($Info) {
                 Write-Output "  N/A"
             }
             
-            Write-Output "`n💾 Resource Usage:"
+            Write-Output ""
+            Write-Output "[RESOURCE USAGE]"
             Write-Output "  Memory: $([math]::Round($proc.WorkingSet / 1MB, 2)) MB"
             Write-Output "  Threads: $($proc.Threads.Count)"
             
-            Write-Output "`n⏱️ Process Times:"
+            Write-Output ""
+            Write-Output "[PROCESS TIMES]"
             Write-Output "  Started: $($proc.StartTime)"
             Write-Output "  CPU Time: $($proc.TotalProcessorTime)"
             
         } catch {
-            Write-Output "⚠️  Process $pid not accessible: $_"
+            Write-Output "[WARNING] Process $pid not accessible: $_"
         }
     }
 
     # Show network binding
-    Write-Output "`n$(('━' * 50))"
-    Write-Output "🌐 Network Binding:"
-    Write-Output "$(('━' * 50))"
+    Write-Output ""
+    Write-Output "=================================================="
+    Write-Output "[NETWORK BINDING]"
+    Write-Output "=================================================="
     $connections | Format-Table LocalAddress,LocalPort,RemoteAddress,RemotePort,State,OwningProcess -AutoSize
 
     # Follow logs if requested
     if ($Follow) {
-        Write-Output "`n$(('━' * 50))"
-        Write-Output "📜 Following process output (Ctrl+C to stop)..."
-        Write-Output "$(('━' * 50))`n"
+        Write-Output ""
+        Write-Output "=================================================="
+        Write-Output "[FOLLOWING PROCESS OUTPUT] (Ctrl+C to stop)"
+        Write-Output "=================================================="
+        Write-Output ""
         
         foreach ($pid in $PIDs) {
             try {
@@ -164,17 +169,17 @@ if ($Info) {
                 
                 if ($logFiles.Count -gt 0) {
                     $latestLog = $logFiles[0]
-                    Write-Output "📄 Tailing: $($latestLog.FullName)"
+                    Write-Output "[LOG] Tailing: $($latestLog.FullName)"
                     Write-Output ""
                     Get-Content -Path $latestLog.FullName -Tail 20 -Wait -ErrorAction SilentlyContinue
                 } else {
-                    Write-Output "⚠️  No log files found for PID $pid"
+                    Write-Output "[WARNING] No log files found for PID $pid"
                     Write-Output "    Consider checking application logs manually in:"
                     Write-Output "    - $($proc.Path -replace '\\[^\\]*$', '')\logs"
                     Write-Output "    - Event Viewer (Applications and Services Logs)"
                 }
             } catch {
-                Write-Output "⚠️  Error accessing process logs: $_"
+                Write-Output "[ERROR] Error accessing process logs: $_"
             }
         }
     }
@@ -183,14 +188,14 @@ if ($Info) {
 }
 
 elseif ($Kill) {
-    Write-Output "🛑 Killing processes on port $Port ..."
+    Write-Output "[ACTION] Killing processes on port $Port ..."
 
     foreach ($pid in $PIDs) {
         try {
             Stop-Process -Id $pid -Force -ErrorAction Stop
-            Write-Output "✔️  Killed PID $pid"
+            Write-Output "[OK] Killed PID $pid"
         } catch {
-            Write-Output "⚠️  Could not kill PID $pid: $_"
+            Write-Output "[ERROR] Could not kill PID $pid: $_"
         }
     }
 
@@ -198,6 +203,6 @@ elseif ($Kill) {
 }
 
 else {
-    Write-Output "🔍 Processes using port $Port: $($PIDs -join ', ')"
+    Write-Output "[PROCESSES] Using port $Port : $($PIDs -join ', ')"
     $connections | Format-Table LocalAddress,LocalPort,RemoteAddress,RemotePort,State,OwningProcess
 }
